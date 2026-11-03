@@ -1,0 +1,183 @@
+name: Build XR1710G LEDE + U-Boot bundle
+
+on:
+  schedule:
+    # 18:00 UTC on the 1st = 02:00 Asia/Shanghai on the 2nd.
+    - cron: "0 18 1 * *"
+  workflow_dispatch:
+    inputs:
+      lede_ref:
+        description: "LEDE branch, tag, or commit"
+        required: false
+        default: "master"
+      uboot_tag:
+        description: "Verified YYH2913/http-uboot release tag"
+        required: false
+        default: "xr1710g_261102"
+      profile:
+        description: "Package profile"
+        required: false
+        default: "default"
+        type: choice
+        options:
+          - default
+          - trimmed
+
+permissions:
+  contents: write
+
+concurrency:
+  group: xr1710g-lede-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: LEDE XR1710G
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    env:
+      UBOOT_REPO: YYH2913/http-uboot
+      UBOOT_TAG: ${{ github.event.inputs.uboot_tag || 'xr1710g_261102' }}
+      LEDE_REF: ${{ github.event.inputs.lede_ref || 'master' }}
+      PROFILE: ${{ github.event.inputs.profile || 'default' }}
+
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      - name: Checkout CI files
+        uses: actions/checkout@v4
+        with:
+          path: ci
+          fetch-depth: 1
+
+      - name: Checkout LEDE
+        uses: actions/checkout@v4
+        with:
+          repository: coolsnowwolf/lede
+          ref: ${{ env.LEDE_REF }}
+          path: lede
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison \
+            build-essential bzip2 ccache clang cmake cpio curl \
+            device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
+            genisoimage git gperf haveged help2man intltool libc6-dev-i386 \
+            libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+            libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev \
+            libpython3-dev libreadline-dev libssl-dev libtool llvm lrzsz \
+            msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
+            python3-pyelftools python3-setuptools qemu-utils rsync scons \
+            squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip \
+            vim wget xmlto xxd zlib1g-dev jq zip
+
+      - name: Prepare LEDE configuration
+        working-directory: lede
+        run: |
+          if [ "$PROFILE" = "trimmed" ]; then
+            cp ../ci/configs/xr1710g-trimmed.config .config
+          else
+            cp ../ci/configs/xr1710g.config .config
+          fi
+          sed -i 's/#src-git helloworld/src-git helloworld/g' feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          make defconfig
+          grep -qE '^CONFIG_TARGET_(DEVICE_)?airoha_an7581_DEVICE_gemtek_xr1710g=y$' .config
+          grep -q '^CONFIG_TARGET_ROOTFS_INITRAMFS=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-app-package-manager=y$' .config
+
+      - name: Download package sources
+        working-directory: lede
+        run: make download -j"$(nproc)"
+
+      - name: Compile firmware
+        working-directory: lede
+        run: |
+          set -o pipefail
+          make -j"$(nproc)" 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
+
+      - name: Verify final package manifest
+        working-directory: lede
+        run: |
+          bash "$GITHUB_WORKSPACE/ci/scripts/verify-manifest.sh" \
+            "$GITHUB_WORKSPACE/lede/bin/targets/airoha/an7581" \
+            "$PROFILE"
+
+      - name: Fetch verified U-Boot bundle member
+        working-directory: lede
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist/uboot"
+          bash "$GITHUB_WORKSPACE/ci/scripts/fetch-uboot.sh" "$GITHUB_WORKSPACE/dist/uboot"
+
+      - name: Package release bundle
+        working-directory: lede
+        run: |
+          release_tag="xr1710g-lede-${PROFILE}-$(date -u +%Y-%m)-r${{ github.run_number }}"
+          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+          RELEASE_TAG="$release_tag" BUILD_PROFILE="$PROFILE" \
+            bash "$GITHUB_WORKSPACE/ci/scripts/package-artifacts.sh" \
+            "$GITHUB_WORKSPACE/dist" \
+            "$GITHUB_WORKSPACE/lede" \
+            "$GITHUB_WORKSPACE/dist/uboot"
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xr1710g-${{ env.PROFILE }}-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error
+
+      - name: Upload failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xr1710g-build-log-${{ github.run_number }}
+          path: |
+            lede/build.log
+            lede/.config
+          if-no-files-found: warn
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          lede_short="$(git -C lede rev-parse --short=12 HEAD)"
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Monthly custom XR1710G build (${PROFILE} profile).
+
+          - LEDE: \`${lede_short}\`
+          - U-Boot release: \`${UBOOT_TAG}\`
+          - UBI layout: UBI 2.0 (0x00700000 + 0x1b700000)
+
+          The zip contains a LEDE sysupgrade FIT and the verified U-Boot
+          chainloader slot. They target different flash regions and must not
+          be merged or flashed interchangeably.
+          EOF
+          mapfile -t images < <(find "$GITHUB_WORKSPACE/dist/lede" -maxdepth 1 -type f -name '*.itb')
+          mapfile -t metadata < <(find "$GITHUB_WORKSPACE/dist/lede" -maxdepth 1 -type f \( -name '*.manifest' -o -name '*.buildinfo' \))
+          gh release create "$RELEASE_TAG" \
+            "$GITHUB_WORKSPACE/dist/${RELEASE_TAG}.zip" \
+            "$GITHUB_WORKSPACE/dist/SHA256SUMS" \
+            "$GITHUB_WORKSPACE/dist/BUILD_INFO.txt" \
+            "$GITHUB_WORKSPACE/dist/uboot/xr1710g-chainloader-slot.bin" \
+            "${images[@]}" \
+            "${metadata[@]}" \
+            --title "XR1710G LEDE ${PROFILE} ${RELEASE_TAG}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"

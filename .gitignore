@@ -1,0 +1,9 @@
+dist/
+lede/
+build.log
+*.zip
+*.itb
+*.bin
+*.ipk
+*.manifest
+*.buildinfo
