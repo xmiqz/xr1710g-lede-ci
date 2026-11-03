@@ -4,10 +4,27 @@ set -euo pipefail
 target_dir="${1:?usage: verify-manifest.sh TARGET_DIR MODE}"
 mode="${2:-default}"
 
-manifest="$(find "$target_dir" -maxdepth 1 -type f -name '*xr1710g*.manifest' | head -n 1)"
-if [ -z "$manifest" ]; then
-  echo "No XR1710G manifest found in $target_dir" >&2
+mapfile -t manifests < <(
+  find "$target_dir" -maxdepth 1 -type f -name '*.manifest' -printf '%f\n' \
+    | sort
+)
+if [ "${#manifests[@]}" -eq 0 ]; then
+  echo "No manifest found in $target_dir" >&2
+  find "$target_dir" -maxdepth 1 -type f -printf '  %f\n' | sort >&2
   exit 1
+fi
+
+manifest=""
+for candidate in "${manifests[@]}"; do
+  if [[ "$candidate" == *xr1710g* ]]; then
+    manifest="$target_dir/$candidate"
+    break
+  fi
+done
+if [ -z "$manifest" ]; then
+  # Single-profile LEDE builds can name the manifest after the target
+  # (for example lede-airoha-an7581.manifest) instead of the device.
+  manifest="$target_dir/${manifests[0]}"
 fi
 
 echo "Checking $manifest"
@@ -31,7 +48,7 @@ required=(
 )
 
 for pkg in "${required[@]}"; do
-  grep -q " - $pkg$" "$manifest" || {
+  grep -Eq "^${pkg} - | - ${pkg}$" "$manifest" || {
     echo "Required hardware package is missing: $pkg" >&2
     exit 1
   }
@@ -56,7 +73,7 @@ if [ "$mode" = "trimmed" ]; then
     coremark
   )
   for pkg in "${forbidden[@]}"; do
-    if grep -q " - $pkg$" "$manifest"; then
+    if grep -Eq "^${pkg} - | - ${pkg}$" "$manifest"; then
       echo "Trimmed profile still contains: $pkg" >&2
       exit 1
     fi
