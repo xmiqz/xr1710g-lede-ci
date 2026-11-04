@@ -136,7 +136,8 @@ jobs:
             feeds/packages/utils/yq \
             feeds/packages/net/nikki \
             feeds/helloworld/mihomo \
-            feeds/luci/applications/luci-app-nikki
+            feeds/luci/applications/luci-app-nikki \
+            feeds/luci/themes/luci-theme-argon
           ./scripts/feeds install -a
           set +e
           make defconfig
