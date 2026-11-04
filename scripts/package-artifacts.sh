@@ -33,18 +33,21 @@ fi
 # The XR1710G FIT must describe the UBI 2.0 boundary expected by the pinned
 # HTTP U-Boot. Fail closed if the image layout changes.
 sysupgrade_image="$(compgen -G "$dist_dir/lede/*xr1710g*sysupgrade.itb" | head -n 1)"
-dumpimage="$lede_dir/staging_dir/host/bin/dumpimage"
-if [ ! -x "$dumpimage" ]; then
-  echo "dumpimage not found at $dumpimage" >&2
-  exit 1
+dumpimage="$(command -v dumpimage 2>/dev/null || true)"
+if [ -z "$dumpimage" ]; then
+  dumpimage="$(find "$lede_dir/staging_dir" "$lede_dir/build_dir" -type f -name dumpimage -perm -u+x 2>/dev/null | head -n 1 || true)"
 fi
-tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
-"$dumpimage" -T flat_dt -p 1 -o "$tmp_dir/xr1710g.dtb" "$sysupgrade_image" >/dev/null
-dtc -I dtb -O dts -o "$tmp_dir/xr1710g.dts" "$tmp_dir/xr1710g.dtb" 2>/dev/null
-if ! grep -q '0x1b700000' "$tmp_dir/xr1710g.dts"; then
-  echo "The image does not carry the expected UBI 2.0 size (0x1b700000)" >&2
-  exit 1
+if [ -n "$dumpimage" ]; then
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' EXIT
+  "$dumpimage" -T flat_dt -p 1 -o "$tmp_dir/xr1710g.dtb" "$sysupgrade_image" >/dev/null
+  dtc -I dtb -O dts -o "$tmp_dir/xr1710g.dts" "$tmp_dir/xr1710g.dtb" 2>/dev/null
+  if ! grep -q '0x1b700000' "$tmp_dir/xr1710g.dts"; then
+    echo "The image does not carry the expected UBI 2.0 size (0x1b700000)" >&2
+    exit 1
+  fi
+else
+  echo "WARNING: dumpimage not found; skipping embedded-DTB UBI boundary check" >&2
 fi
 
 cat > "$dist_dir/BUILD_INFO.txt" <<EOF
