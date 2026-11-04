@@ -119,6 +119,12 @@ jobs:
           set -e
           echo "make_defconfig_rc=$make_defconfig_rc"
           grep -E '^CONFIG_(aarch64|ARCH_64BIT)|CONFIG_PACKAGE_(yq|nikki|mihomo|luci-app-nikki)' .config || true
+          if [ -f tmp/.config-package.in ]; then
+            echo "--- yq package Kconfig ---"
+            grep -n -A18 -B2 'config PACKAGE_yq' tmp/.config-package.in || true
+            echo "--- nikki package Kconfig ---"
+            grep -n -A18 -B2 'config PACKAGE_nikki' tmp/.config-package.in || true
+          fi
           grep -E '^CONFIG_TARGET_(DEVICE_)?airoha_an7581_DEVICE_gemtek_xr1710g=y$|^CONFIG_TARGET_ROOTFS_INITRAMFS=y$|^CONFIG_PACKAGE_(kmod-(dummy|inet-diag|nft-socket|nft-tproxy|tun)|nikki|mihomo|yq|luci-app-(airoha|nikki)|luci-i18n-(airoha|nikki)|luci-theme-argon|xr1710g-status-core)=y$' .config || true
           grep -qE '^CONFIG_TARGET_(DEVICE_)?airoha_an7581_DEVICE_gemtek_xr1710g=y$' .config
           for symbol in \
