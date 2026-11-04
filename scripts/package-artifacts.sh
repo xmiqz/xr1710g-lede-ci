@@ -24,9 +24,11 @@ if ! compgen -G "$dist_dir/lede/*xr1710g*sysupgrade.itb" >/dev/null; then
   exit 1
 fi
 
-cp -v "$uboot_dir/xr1710g-chainloader-slot.bin" "$dist_dir/uboot/"
-cp -v "$uboot_dir/UBOOT_SHA256SUMS" "$dist_dir/uboot/"
-cp -v "$uboot_dir/UBOOT_BUILD_INFO.txt" "$dist_dir/uboot/"
+if [ "$(cd "$uboot_dir" && pwd -P)" != "$(cd "$dist_dir/uboot" && pwd -P)" ]; then
+  cp -v "$uboot_dir/xr1710g-chainloader-slot.bin" "$dist_dir/uboot/"
+  cp -v "$uboot_dir/UBOOT_SHA256SUMS" "$dist_dir/uboot/"
+  cp -v "$uboot_dir/UBOOT_BUILD_INFO.txt" "$dist_dir/uboot/"
+fi
 
 # The XR1710G FIT must describe the UBI 2.0 boundary expected by the pinned
 # HTTP U-Boot. Fail closed if the image layout changes.
