@@ -110,6 +110,13 @@ jobs:
           set -o pipefail
           make -j"$(nproc)" 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
 
+      - name: Upload raw LEDE target output
+        uses: actions/upload-artifact@v4
+        with:
+          name: xr1710g-lede-raw-${{ github.run_number }}
+          path: lede/bin/targets/airoha/an7581/
+          if-no-files-found: error
+
       - name: Verify final package manifest
         working-directory: lede
         run: |
