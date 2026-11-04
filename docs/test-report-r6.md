@@ -113,6 +113,35 @@ airoha-en7581-npu-firmware: present
 airoha-en7581-mt7996-npu-firmware: present
 ```
 
+### 4.7 NPU 状态
+
+NPU 驱动和固件已经启动：
+
+```text
+airoha-npu 1e900000.npu: NPU fw version: 0.1111
+mt7996e 0000:01:00.0: NPU version: 0.1111
+```
+
+MT76 NPU 中断有计数，说明 MT7996 侧 NPU 中断路径在工作：
+
+```text
+mt76-npu.0: 10728
+mt76-npu.1: 3014
+```
+
+但以太网 PPE 的 debugfs 显示：
+
+```text
+npu_attached: 0
+/sys/kernel/debug/ppe/entries: 空
+```
+
+当前路由器是 AP/桥接模式（`br-lan` 统一承载 LAN/WAN 端口，LAN 为 DHCP 客户端），没有 WAN 路由转发流量，因此不能把 `npu_attached: 0` 直接理解为 NPU 驱动失败。更准确的说法是：
+
+- MT7996 NPU 固件和中断路径已经起来
+- 以太网 PPE 的硬件转发当前没有挂载
+- 如果要验证 WAN 路由下的硬件加速，需要先把 WAN/LAN 分离，并启用 flow offload，再观察 `npu_attached` 和 PPE entries 是否变化
+
 ## 5. 发现的问题
 
 ### 5.1 `opkg update` 的 core feed 404
