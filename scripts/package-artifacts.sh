@@ -35,7 +35,15 @@ fi
 sysupgrade_image="$(compgen -G "$dist_dir/lede/*xr1710g*sysupgrade.itb" | head -n 1)"
 dumpimage="$(command -v dumpimage 2>/dev/null || true)"
 if [ -z "$dumpimage" ]; then
-  dumpimage="$(find "$lede_dir/staging_dir" "$lede_dir/build_dir" -type f -name dumpimage -perm -u+x 2>/dev/null | head -n 1 || true)"
+  while IFS= read -r candidate; do
+    if "$candidate" -V >/dev/null 2>&1; then
+      dumpimage="$candidate"
+      break
+    fi
+  done < <(
+    find "$lede_dir/staging_dir/host" "$lede_dir/build_dir/host" \
+      -type f -name dumpimage -perm -u+x 2>/dev/null
+  )
 fi
 if [ -n "$dumpimage" ]; then
   tmp_dir="$(mktemp -d)"
