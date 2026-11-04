@@ -50,6 +50,11 @@ required=(
   luci-i18n-nikki-zh-cn
   nikki
   mihomo
+  kmod-dummy
+  kmod-inet-diag
+  kmod-nft-socket
+  kmod-nft-tproxy
+  kmod-tun
   luci-theme-argon
   nand-utils
   rtl826x-firmware
