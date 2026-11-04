@@ -1,5 +1,6 @@
 dist/
 lede/
+!patches/lede/
 build.log
 *.zip
 *.itb

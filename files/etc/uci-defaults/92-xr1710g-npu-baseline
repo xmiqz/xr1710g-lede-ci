@@ -1,0 +1,26 @@
+#!/bin/sh
+# First-boot defaults: make the PPE / flowtable observability usable and keep
+# a pure-bridge AP from double-processing bridged frames in the L3 hooks.
+#
+# Safe to re-run: every step is idempotent and only touches UCI + sysctl.
+
+[ -f /etc/config/firewall ] || exit 0
+
+# flowable defaults: soft flowtable on, hardware offload requested. On a pure
+# bridge AP this yields no PPE entries (bridged traffic never hits the inet
+# forward chain) but keeps the switch in the same state as the reference build.
+uci -q get firewall.@defaults[0].flow_offloading >/dev/null || \
+	uci -q set firewall.@defaults[0].flow_offloading='1'
+uci -q get firewall.@defaults[0].flow_offloading_hw >/dev/null || \
+	uci -q set firewall.@defaults[0].flow_offloading_hw='1'
+uci -q commit firewall
+
+# Pure bridge: don't pull bridged IPv4/IPv6 frames into iptables/nft. This
+# avoids a second, offload-invisible processing path for the same frame.
+cat > /etc/sysctl.d/20-xr1710g-bridge.conf <<'EOF'
+net.bridge.bridge-nf-call-iptables=0
+net.bridge.bridge-nf-call-ip6tables=0
+EOF
+/sbin/sysctl -p /etc/sysctl.d/20-xr1710g-bridge.conf >/dev/null 2>&1 || true
+
+exit 0
