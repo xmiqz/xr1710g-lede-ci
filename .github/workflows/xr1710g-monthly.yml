@@ -91,19 +91,21 @@ jobs:
       - name: Apply XR1710G NPU patches
         run: |
           set -euxo pipefail
-          # Stage 0: PPE accounting + the v7.1 PPE fixes LEDE's pinned tree lacks.
+          # Stage 0: PPE accounting + any airoha patch LEDE's pinned tree lacks.
           dst=lede/target/linux/airoha/patches-6.18
           mkdir -p "$dst"
-          # Fail loudly if LEDE already ships a patch with the same number:
-          # a silent overwrite or a duplicate application is hard to diagnose.
+          # LEDE's pinned airoha tree already carries the v7.1 PPE fixes under
+          # the same file names (content is equivalent; only the hunk offsets
+          # differ). Treat an existing same-named patch as authoritative and
+          # only copy the ones LEDE is missing.
           for p in ci/patches/lede/airoha/*.patch; do
             name=$(basename "$p")
             if [ -e "$dst/$name" ]; then
-              echo "patch name collision: $name already exists in $dst" >&2
-              exit 1
+              echo "already in LEDE, skipping: $name"
+            else
+              cp -v "$p" "$dst"/
             fi
           done
-          cp -v ci/patches/lede/airoha/*.patch "$dst"/
           # The target config-6.18 ships with NET_AIROHA_FLOW_STATS disabled as
           # an explicit "is not set" line, so rewrite that line instead of
           # appending a duplicate symbol.
