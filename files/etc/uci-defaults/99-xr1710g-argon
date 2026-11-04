@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# The LEDE luci feed ships Argon but leaves Bootstrap as the initial theme.
+# Select Argon once the root filesystem is complete. Keep the Bootstrap entry
+# so a failed Argon upgrade can still be recovered from LuCI.
+[ -d /www/luci-static/argon ] || exit 0
+
+uci -q get luci.themes.Argon >/dev/null 2>&1 || \
+	uci set luci.themes.Argon='/luci-static/argon'
+uci set luci.main.mediaurlbase='/luci-static/argon'
+uci commit luci
+
+exit 0

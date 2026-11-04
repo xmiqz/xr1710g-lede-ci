@@ -24,6 +24,30 @@ if ! compgen -G "$dist_dir/lede/*xr1710g*sysupgrade.itb" >/dev/null; then
   exit 1
 fi
 
+# Keep the device-specific LuCI packages alongside the firmware so they can
+# be tested or reinstalled on a running router without rebuilding the image.
+mkdir -p "$dist_dir/packages"
+selected_packages=(
+  xr1710g-status-core
+  luci-app-airoha-npu
+  luci-app-airoha-flowsense
+  luci-app-airoha-fancontrol
+  luci-i18n-airoha-npu-zh-cn
+  luci-i18n-airoha-flowsense-zh-cn
+  luci-i18n-airoha-fancontrol-zh-cn
+  luci-theme-argon
+)
+for pkg in "${selected_packages[@]}"; do
+  mapfile -t ipks < <(find "$lede_dir/bin/packages" -type f -name "${pkg}_*.ipk" | sort)
+  if [ "${#ipks[@]}" -eq 0 ]; then
+    echo "Selected package was not built: $pkg" >&2
+    exit 1
+  fi
+  for ipk in "${ipks[@]}"; do
+    cp -v "$ipk" "$dist_dir/packages/"
+  done
+done
+
 if [ "$(cd "$uboot_dir" && pwd -P)" != "$(cd "$dist_dir/uboot" && pwd -P)" ]; then
   cp -v "$uboot_dir/xr1710g-chainloader-slot.bin" "$dist_dir/uboot/"
   cp -v "$uboot_dir/UBOOT_SHA256SUMS" "$dist_dir/uboot/"
@@ -65,6 +89,7 @@ profile=$build_profile
 lede_commit=$lede_commit
 uboot_release=$uboot_tag
 release_tag=$release_tag
+package_source=orangeyoo/XR1710G-OpenWrt-iStoreOS-Community@88276e8e8163b8bee1770aaa8973e8383d8a6333
 built_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ubi_layout=UBI 2.0 (0x00700000 + 0x1b700000)
 EOF
@@ -73,13 +98,18 @@ cat > "$dist_dir/FLASH_README.txt" <<'EOF'
 XR1710G release bundle
 ======================
 
-This archive contains two different flash targets:
+This archive contains two different flash targets and an optional package set:
 
 1. lede/*-sysupgrade.itb
    Upload this to the HTTP recovery "firmware" target, or use normal
    OpenWrt/LEDE sysupgrade. It writes the UBI "fit" volume.
 
-2. uboot/xr1710g-chainloader-slot.bin
+2. packages/*.ipk
+   Device-specific LuCI packages from the same build. Install dependencies
+   before the applications; do not install an old package against a different
+   kernel or LuCI ABI.
+
+3. uboot/xr1710g-chainloader-slot.bin
    Upload only to the HTTP recovery "uboot" target. It updates the raw
    chainloader slot. Do not use sysupgrade for this file.
 
@@ -101,7 +131,7 @@ EOF
 archive="$dist_dir/${release_tag}.zip"
 (
   cd "$dist_dir"
-  zip -9 -r "$(basename "$archive")" lede uboot BUILD_INFO.txt FLASH_README.txt SHA256SUMS
+  zip -9 -r "$(basename "$archive")" lede packages uboot BUILD_INFO.txt FLASH_README.txt SHA256SUMS
 )
 (cd "$dist_dir" && sha256sum "$(basename "$archive")" >> SHA256SUMS)
 

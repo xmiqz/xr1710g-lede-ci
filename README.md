@@ -45,3 +45,9 @@ scripts/verify-manifest.sh
 - LuCI 默认的软件包管理器可以搜索 opkg feed，但自编译固件的 ABI 与上游 feed 不一定一致。
 - `luci-app-attendedsysupgrade` 需要兼容的 ASU 服务端；官方 ASU 不识别这个自定义 LEDE target。
 - 若要在 LuCI 里检查月更固件，建议后续单独做一个轻量 LuCI app，读取 GitHub Release API，校验 SHA256 后再调用 `sysupgrade`。
+
+## 设备专属包
+
+默认镜像现在包含从 XR1710G `source-2.0` 固定提交复制的 NPU、FlowSense 和风扇控制页面，以及 LEDE feed 的 Argon 主题。源码副本位于 `packages/`，首次启动默认主题脚本位于 `files/etc/uci-defaults/`。详细取舍和暂不加入的包见 `docs/package-inventory.md`。
+
+Release 资产会额外包含本轮的 `packages/*.ipk`，方便在已运行的路由器上先做单包验证；不要把这些包与不同内核/LuCI ABI 的固件混装。

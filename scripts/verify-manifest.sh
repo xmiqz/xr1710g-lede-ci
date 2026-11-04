@@ -40,11 +40,19 @@ required=(
   kmod-gpio-button-hotplug
   luci
   luci-app-package-manager
+  luci-app-airoha-npu
+  luci-app-airoha-flowsense
+  luci-app-airoha-fancontrol
+  luci-i18n-airoha-npu-zh-cn
+  luci-i18n-airoha-flowsense-zh-cn
+  luci-i18n-airoha-fancontrol-zh-cn
+  luci-theme-argon
   nand-utils
   rtl826x-firmware
   ubi-utils
   uboot-envtools
   wpad-openssl
+  xr1710g-status-core
 )
 
 for pkg in "${required[@]}"; do

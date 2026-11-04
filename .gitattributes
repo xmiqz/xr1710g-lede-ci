@@ -3,3 +3,10 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.config text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.po text eol=lf
+*.pot text eol=lf
+Makefile text eol=lf
+files/etc/uci-defaults/* text eol=lf
+packages/** text eol=lf

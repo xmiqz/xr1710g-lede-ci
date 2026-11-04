@@ -1,0 +1,2 @@
+config jitter 'jitter'
+	option target 'auto'

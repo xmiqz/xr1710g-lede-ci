@@ -66,6 +66,14 @@ jobs:
           path: lede
           fetch-depth: 1
 
+      - name: Add XR1710G packages and first-boot defaults
+        run: |
+          mkdir -p lede/package/xr1710g
+          cp -a ci/packages/. lede/package/xr1710g/
+          mkdir -p lede/files
+          cp -a ci/files/. lede/files/
+          chmod 0755 lede/files/etc/uci-defaults/99-xr1710g-argon
+
       - name: Install build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -94,11 +102,18 @@ jobs:
           fi
           sed -i 's/#src-git helloworld/src-git helloworld/g' feeds.conf.default
           ./scripts/feeds update -a
+          # The LEDE luci feed carries an older, smaller luci-app-airoha-npu.
+          # Keep the XR1710G-specific package from ci/packages instead.
+          rm -rf feeds/luci/applications/luci-app-airoha-npu
           ./scripts/feeds install -a
           make defconfig
           grep -qE '^CONFIG_TARGET_(DEVICE_)?airoha_an7581_DEVICE_gemtek_xr1710g=y$' .config
           grep -q '^CONFIG_TARGET_ROOTFS_INITRAMFS=y$' .config
           grep -q '^CONFIG_PACKAGE_luci-app-package-manager=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-app-airoha-npu=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-app-airoha-flowsense=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-app-airoha-fancontrol=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-theme-argon=y$' .config
 
       - name: Download package sources
         working-directory: lede
@@ -180,6 +195,7 @@ jobs:
           EOF
           mapfile -t images < <(find "$GITHUB_WORKSPACE/dist/lede" -maxdepth 1 -type f -name '*.itb')
           mapfile -t metadata < <(find "$GITHUB_WORKSPACE/dist/lede" -maxdepth 1 -type f \( -name '*.manifest' -o -name '*.buildinfo' \))
+          mapfile -t packages < <(find "$GITHUB_WORKSPACE/dist/packages" -maxdepth 1 -type f -name '*.ipk')
           gh release create "$RELEASE_TAG" \
             "$GITHUB_WORKSPACE/dist/${RELEASE_TAG}.zip" \
             "$GITHUB_WORKSPACE/dist/SHA256SUMS" \
@@ -187,5 +203,6 @@ jobs:
             "$GITHUB_WORKSPACE/dist/uboot/xr1710g-chainloader-slot.bin" \
             "${images[@]}" \
             "${metadata[@]}" \
+            "${packages[@]}" \
             --title "XR1710G LEDE ${PROFILE} ${RELEASE_TAG}" \
             --notes-file "$RUNNER_TEMP/release-notes.md"
