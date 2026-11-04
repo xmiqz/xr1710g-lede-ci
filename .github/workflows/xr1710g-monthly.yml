@@ -131,14 +131,19 @@ jobs:
           rm -rf feeds/luci/applications/luci-app-airoha-npu
           # Use the pinned arm64 runtime packages from ci/packages instead of
           # the Go-built feed packages, which are not selectable on this target.
-          rm -rf feeds/packages/net/mihomo feeds/packages/utils/yq feeds/helloworld/mihomo
+          rm -rf \
+            feeds/packages/net/mihomo \
+            feeds/packages/utils/yq \
+            feeds/packages/net/nikki \
+            feeds/helloworld/mihomo \
+            feeds/luci/applications/luci-app-nikki
           ./scripts/feeds install -a
           set +e
           make defconfig
           make_defconfig_rc=$?
           set -e
           echo "make_defconfig_rc=$make_defconfig_rc"
-          grep -E '^CONFIG_(aarch64|ARCH_64BIT)|CONFIG_PACKAGE_(yq|nikki|mihomo|luci-app-nikki)' .config || true
+          grep -E '^CONFIG_(aarch64|ARCH_64BIT)|CONFIG_PACKAGE_(firewall4|ip-full|curl|ca-bundle|yq|nikki|mihomo|luci-app-nikki)' .config || true
           if [ -f tmp/.config-package.in ]; then
             echo "--- yq package Kconfig ---"
             grep -n -A18 -B2 'config PACKAGE_yq' tmp/.config-package.in || true
