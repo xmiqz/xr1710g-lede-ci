@@ -21,7 +21,7 @@ scripts/verify-manifest.sh
 
 1. 新建一个 GitHub 仓库，把本目录内容放到仓库根目录。
 2. 确认 Actions 的 `Workflow permissions` 允许写 Release。
-3. 手动运行一次 `Build XR1710G LEDE + U-Boot bundle`，先选 `default` profile。
+3. 手动运行一次 `Build XR1710G LEDE + U-Boot bundle`，先选 `default` profile；默认使用已验证的 LEDE `98b3eed` 基线，也可以在 `lede_ref` 输入框显式覆盖。
 4. 下载 artifact，检查：
    - `dist/lede/*xr1710g*sysupgrade.itb`
    - `dist/uboot/xr1710g-chainloader-slot.bin`
@@ -34,6 +34,7 @@ scripts/verify-manifest.sh
 
 - U-Boot 不是从 LEDE 源码生成的。它来自 `YYH2913/http-uboot` release，并由工作流校验 SHA256。
 - 不要把 `xr1710g-chainloader-slot.bin` 和 `sysupgrade.itb` 合并成一个文件。
+- LEDE 默认基线固定在 `98b3eed3ecb33da1be94d5084284b3644a864622`；当前后续 master 的 feed 曾触发 `dnsmasq/openvswitch` recursive dependency，升级基线前应先在独立分支验证。
 - `default` profile 保留 LEDE 的 Lean router 默认包，其中包含 `luci-app-ssr-plus` 等较大包。
 - `trimmed` profile 只是候选裁剪配置。`make defconfig` 可能会重新选回 target 默认包，工作流会用最终 manifest 做硬校验。
 - LEDE commit 说明里仍把物理 flash、PHY/PCIe、RF 校准、风扇/传感器列为硬件验收项。CI 成功不等于真机验收。

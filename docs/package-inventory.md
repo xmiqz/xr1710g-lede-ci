@@ -21,6 +21,8 @@
 
 设备包不是凭空出现的，当前仓库把 XR1710G 社区集成树的对应目录固定复制到 `packages/`，方便先在不改变上游 feed 的情况下复现构建。后续更新时按下面的来源对照：
 
+当前 CI 的 LEDE 基线固定在 `98b3eed3ecb33da1be94d5084284b3644a864622`。这与 r6 真机验证使用的提交一致；当前后续 master 的 feed 曾出现 `dnsmasq/openvswitch` recursive dependency，不能在未验证前直接替换。
+
 | 包 | 可跟踪的上游/集成源 | 当前采用的版本/提交 | 更新建议 |
 | --- | --- | --- | --- |
 | `luci-app-airoha-npu` | [rchen14b/luci-app-airoha-npu](https://github.com/rchen14b/luci-app-airoha-npu) | 上游 README/Makefile 为 1.0.1；当前 XR 集成版为 1.1.0 | 以上游的 NPU/PPE 修复为主线，合并 XR 版的 `xr1710g-status-core` 缓存和安全读取改造 |

@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       lede_ref:
-        description: "LEDE branch, tag, or commit"
+        description: "LEDE branch, tag, or commit (known-good XR1710G baseline)"
         required: false
-        default: "master"
+        default: "98b3eed3ecb33da1be94d5084284b3644a864622"
       uboot_tag:
         description: "Verified YYH2913/http-uboot release tag"
         required: false
@@ -38,7 +38,7 @@ jobs:
     env:
       UBOOT_REPO: YYH2913/http-uboot
       UBOOT_TAG: ${{ github.event.inputs.uboot_tag || 'xr1710g_261102' }}
-      LEDE_REF: ${{ github.event.inputs.lede_ref || 'master' }}
+      LEDE_REF: ${{ github.event.inputs.lede_ref || '98b3eed3ecb33da1be94d5084284b3644a864622' }}
       PROFILE: ${{ github.event.inputs.profile || 'default' }}
 
     steps:
