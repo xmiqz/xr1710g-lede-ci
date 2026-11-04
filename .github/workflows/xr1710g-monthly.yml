@@ -113,14 +113,32 @@ jobs:
           # Keep the XR1710G-specific package from ci/packages instead.
           rm -rf feeds/luci/applications/luci-app-airoha-npu
           ./scripts/feeds install -a
+          set +e
           make defconfig
+          make_defconfig_rc=$?
+          set -e
+          echo "make_defconfig_rc=$make_defconfig_rc"
+          grep -E '^CONFIG_TARGET_(DEVICE_)?airoha_an7581_DEVICE_gemtek_xr1710g=y$|^CONFIG_TARGET_ROOTFS_INITRAMFS=y$|^CONFIG_PACKAGE_(luci-app-(airoha|nikki)|luci-i18n-(airoha|nikki)|luci-theme-argon|xr1710g-status-core)=y$' .config || true
           grep -qE '^CONFIG_TARGET_(DEVICE_)?airoha_an7581_DEVICE_gemtek_xr1710g=y$' .config
-          grep -q '^CONFIG_TARGET_ROOTFS_INITRAMFS=y$' .config
-          grep -q '^CONFIG_PACKAGE_luci-app-package-manager=y$' .config
-          grep -q '^CONFIG_PACKAGE_luci-app-airoha-npu=y$' .config
-          grep -q '^CONFIG_PACKAGE_luci-app-airoha-flowsense=y$' .config
-          grep -q '^CONFIG_PACKAGE_luci-app-airoha-fancontrol=y$' .config
-          grep -q '^CONFIG_PACKAGE_luci-theme-argon=y$' .config
+          for symbol in \
+            CONFIG_TARGET_ROOTFS_INITRAMFS \
+            CONFIG_PACKAGE_luci-app-package-manager \
+            CONFIG_PACKAGE_luci-app-airoha-npu \
+            CONFIG_PACKAGE_luci-app-airoha-flowsense \
+            CONFIG_PACKAGE_luci-app-airoha-fancontrol \
+            CONFIG_PACKAGE_luci-app-nikki \
+            CONFIG_PACKAGE_luci-i18n-nikki-zh-cn \
+            CONFIG_PACKAGE_luci-theme-argon
+          do
+            grep -q "^${symbol}=y$" .config || {
+              echo "Missing requested config symbol: ${symbol}" >&2
+              exit 1
+            }
+          done
+          if [ "$make_defconfig_rc" -ne 0 ]; then
+            echo "make defconfig returned $make_defconfig_rc" >&2
+            exit "$make_defconfig_rc"
+          fi
 
       - name: Download package sources
         working-directory: lede
