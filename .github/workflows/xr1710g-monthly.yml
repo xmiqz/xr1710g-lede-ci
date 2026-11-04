@@ -122,8 +122,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/dist/uboot"
-          bash "$GITHUB_WORKSPACE/ci/scripts/fetch-uboot.sh" "$GITHUB_WORKSPACE/dist/uboot"
+          mkdir -p "$GITHUB_WORKSPACE/uboot"
+          bash "$GITHUB_WORKSPACE/ci/scripts/fetch-uboot.sh" "$GITHUB_WORKSPACE/uboot"
 
       - name: Package release bundle
         working-directory: lede
@@ -134,7 +134,7 @@ jobs:
             bash "$GITHUB_WORKSPACE/ci/scripts/package-artifacts.sh" \
             "$GITHUB_WORKSPACE/dist" \
             "$GITHUB_WORKSPACE/lede" \
-            "$GITHUB_WORKSPACE/dist/uboot"
+            "$GITHUB_WORKSPACE/uboot"
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v4
