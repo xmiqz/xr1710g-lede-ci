@@ -118,7 +118,7 @@ jobs:
           make_defconfig_rc=$?
           set -e
           echo "make_defconfig_rc=$make_defconfig_rc"
-          grep -E '^CONFIG_TARGET_(DEVICE_)?airoha_an7581_DEVICE_gemtek_xr1710g=y$|^CONFIG_TARGET_ROOTFS_INITRAMFS=y$|^CONFIG_PACKAGE_(luci-app-(airoha|nikki)|luci-i18n-(airoha|nikki)|luci-theme-argon|xr1710g-status-core)=y$' .config || true
+          grep -E '^CONFIG_TARGET_(DEVICE_)?airoha_an7581_DEVICE_gemtek_xr1710g=y$|^CONFIG_TARGET_ROOTFS_INITRAMFS=y$|^CONFIG_PACKAGE_(kmod-(dummy|inet-diag|nft-socket|nft-tproxy|tun)|nikki|mihomo|yq|luci-app-(airoha|nikki)|luci-i18n-(airoha|nikki)|luci-theme-argon|xr1710g-status-core)=y$' .config || true
           grep -qE '^CONFIG_TARGET_(DEVICE_)?airoha_an7581_DEVICE_gemtek_xr1710g=y$' .config
           for symbol in \
             CONFIG_TARGET_ROOTFS_INITRAMFS \
@@ -128,7 +128,10 @@ jobs:
             CONFIG_PACKAGE_luci-app-airoha-fancontrol \
             CONFIG_PACKAGE_luci-app-nikki \
             CONFIG_PACKAGE_luci-i18n-nikki-zh-cn \
-            CONFIG_PACKAGE_luci-theme-argon
+            CONFIG_PACKAGE_luci-theme-argon \
+            CONFIG_PACKAGE_nikki \
+            CONFIG_PACKAGE_mihomo \
+            CONFIG_PACKAGE_yq
           do
             grep -q "^${symbol}=y$" .config || {
               echo "Missing requested config symbol: ${symbol}" >&2
