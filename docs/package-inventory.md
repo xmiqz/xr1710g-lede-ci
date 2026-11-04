@@ -30,8 +30,9 @@
 | `luci-app-airoha-fancontrol` | [naoki66/luci-app-airoha](https://github.com/naoki66/luci-app-airoha) 的 `luci-app-airoha-fancontrol`；XR 集成树为增强版 | naoki `0b1d8a0`，XR 为 1.0.0 | 保留 XR 的软件曲线和 fail-safe；对照 naoki 的温度/风量字段变化 |
 | `xr1710g-status-core` | [orangeyoo/XR1710G-OpenWrt-iStoreOS-Community](https://github.com/orangeyoo/XR1710G-OpenWrt-iStoreOS-Community) | `88276e8e8163b8bee1770aaa8973e8383d8a6333`（`source-2.0`） | 这是 XR 集成层自己的 helper，没有独立上游；随 XR 树的 NPU/FlowSense 更新同步 |
 | `luci-theme-argon` | [jerrykuku/luci-theme-argon](https://github.com/jerrykuku/luci-theme-argon) | LEDE feed 自带 2.4.3；上游最新为 3.1.2 | 当前优先跟随 LEDE feed；升级到 3.x 要单独处理同名包和新增依赖 |
-| `luci-app-nikki` / `luci-i18n-nikki-zh-cn` | [nikkinikki-org/OpenWrt-nikki](https://github.com/nikkinikki-org/OpenWrt-nikki) | LEDE feed 版本：LuCI 1.26.2 | 推荐跟随 LEDE feed 的 `luci-app-nikki` 与 `packages` 的 `nikki/mihomo`；不要混用不同 feed 的旧 `.ipk` |
-| `mihomo` | [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | LEDE `packages`/`helloworld` feed 的 Go 构建版本 | 通过 LEDE feed 更新；它是 Nikki 的运行时依赖 |
+| `luci-app-nikki` / `luci-i18n-nikki-zh-cn` | [nikkinikki-org/OpenWrt-nikki](https://github.com/nikkinikki-org/OpenWrt-nikki) | LEDE feed 版本：LuCI 1.26.2 | 推荐跟随 LEDE feed 的 `luci-app-nikki` 和 `nikki` 包；不要混用不同 feed 的旧 `.ipk` |
+| `mihomo` | [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | 固定的上游 arm64 release：`v1.19.33` | 通过本仓库的 `mihomo` 预编译包更新；它是 Nikki 的运行时依赖 |
+| `yq` | [mikefarah/yq](https://github.com/mikefarah/yq) | 固定的上游 arm64 release：`v4.33.1` | 通过本仓库的 `yq` 预编译包更新；Nikki 的 YAML 配置依赖 |
 
 更新设备包时的建议流程：
 
@@ -39,6 +40,8 @@
 2. 对照 `rchen14b`、`Gilly1970`、`naoki66` 的上游，优先吸收 bug fix，不直接把旧 ImmortalWrt 的二进制包搬进来。
 3. 更新后重新跑 CI，并至少验证 NPU/FlowSense 页面 RPC、风扇曲线写回、Argon 登录页、Nikki 启动和 `mihomo` 版本。
 4. 更新完成后把新的源提交写回本文件，保证 `packages/` 内容可追溯。
+
+Nikki 的 `mihomo` 和 `yq` 在 LEDE 的 Go 包 Kconfig 中未能被该 target 选中，因此本仓库使用固定版本的上游 arm64 release，并在镜像构建时校验 SHA256 后放入 `xr1710g` 包。这样不依赖构建机的 Go 工具链，也能避免把旧 kernel/LuCI ABI 的 `.ipk` 直接混入。
 
 ## 暂不加入
 

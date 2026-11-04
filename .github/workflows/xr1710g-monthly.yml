@@ -81,6 +81,23 @@ jobs:
           cp -a ci/files/. lede/files/
           chmod 0755 lede/files/etc/uci-defaults/99-xr1710g-argon
 
+      - name: Download prebuilt Nikki runtime
+        run: |
+          set -euxo pipefail
+          mkdir -p lede/package/xr1710g/yq/files lede/package/xr1710g/mihomo/files
+          curl -fL --retry 5 --retry-all-errors \
+            https://github.com/mikefarah/yq/releases/download/v4.33.1/yq_linux_arm64 \
+            -o lede/package/xr1710g/yq/files/yq
+          echo "e3a47e60765322995f11422108829881d2166dcf9b13a3ae8ad2c002ee61f8a1  lede/package/xr1710g/yq/files/yq" \
+            | sha256sum -c -
+          curl -fL --retry 5 --retry-all-errors \
+            https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-linux-arm64-v1.19.33.gz \
+            -o /tmp/mihomo-linux-arm64-v1.19.33.gz
+          echo "ba408b317080ee265c46cb923a50018c1b82cbd708551cdd46a1e3e307396187  /tmp/mihomo-linux-arm64-v1.19.33.gz" \
+            | sha256sum -c -
+          gzip -dc /tmp/mihomo-linux-arm64-v1.19.33.gz > lede/package/xr1710g/mihomo/files/mihomo
+          chmod 0755 lede/package/xr1710g/yq/files/yq lede/package/xr1710g/mihomo/files/mihomo
+
       - name: Install build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -112,6 +129,9 @@ jobs:
           # The LEDE luci feed carries an older, smaller luci-app-airoha-npu.
           # Keep the XR1710G-specific package from ci/packages instead.
           rm -rf feeds/luci/applications/luci-app-airoha-npu
+          # Use the pinned arm64 runtime packages from ci/packages instead of
+          # the Go-built feed packages, which are not selectable on this target.
+          rm -rf feeds/packages/net/mihomo feeds/packages/utils/yq feeds/helloworld/mihomo
           ./scripts/feeds install -a
           set +e
           make defconfig
