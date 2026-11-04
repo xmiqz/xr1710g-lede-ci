@@ -13,8 +13,30 @@
 | `luci-app-airoha-flowsense` | XR1710G `source-2.0` 1.1.3 | PPE/FlowSense、硬件转发和流表观察 | 加入 |
 | `luci-app-airoha-fancontrol` | XR1710G `source-2.0` 1.0.0 | NCT7802 风扇曲线、手动/自动模式、温度保护 | 加入 |
 | `luci-theme-argon` | LEDE `luci` feed 2.4.3 | Argon 主题 | 加入并设为首次启动默认主题 |
+| `luci-app-nikki` + `luci-i18n-nikki-zh-cn` | LEDE `luci` feed / `packages` feed | Mihomo 透明代理及中文界面 | 加入 |
 
 这些包都从源码在本次 LEDE 构建中重新编译，不直接安装旧 ImmortalWrt 的 `.ipk`。
+
+## 上游源头与更新方式
+
+设备包不是凭空出现的，当前仓库把 XR1710G 社区集成树的对应目录固定复制到 `packages/`，方便先在不改变上游 feed 的情况下复现构建。后续更新时按下面的来源对照：
+
+| 包 | 可跟踪的上游/集成源 | 当前采用的版本/提交 | 更新建议 |
+| --- | --- | --- | --- |
+| `luci-app-airoha-npu` | [rchen14b/luci-app-airoha-npu](https://github.com/rchen14b/luci-app-airoha-npu) | 上游 README/Makefile 为 1.0.1；当前 XR 集成版为 1.1.0 | 以上游的 NPU/PPE 修复为主线，合并 XR 版的 `xr1710g-status-core` 缓存和安全读取改造 |
+| `luci-app-airoha-flowsense` | [Gilly1970/Gemtek-W1700K](https://github.com/Gilly1970/Gemtek-W1700K) 的 `luci-apps/luci-app-airoha-flowsense`；XR 集成树继续维护 | Gilly `db3f1c8`，XR `source-2.0` 的 1.1.3 | 先看 Gilly 的 FlowSense 更新，再把 XR 的 XR1710G 状态缓存/ACL 改动合并回来 |
+| `luci-app-airoha-fancontrol` | [naoki66/luci-app-airoha](https://github.com/naoki66/luci-app-airoha) 的 `luci-app-airoha-fancontrol`；XR 集成树为增强版 | naoki `0b1d8a0`，XR 为 1.0.0 | 保留 XR 的软件曲线和 fail-safe；对照 naoki 的温度/风量字段变化 |
+| `xr1710g-status-core` | [orangeyoo/XR1710G-OpenWrt-iStoreOS-Community](https://github.com/orangeyoo/XR1710G-OpenWrt-iStoreOS-Community) | `88276e8e8163b8bee1770aaa8973e8383d8a6333`（`source-2.0`） | 这是 XR 集成层自己的 helper，没有独立上游；随 XR 树的 NPU/FlowSense 更新同步 |
+| `luci-theme-argon` | [jerrykuku/luci-theme-argon](https://github.com/jerrykuku/luci-theme-argon) | LEDE feed 自带 2.4.3；上游最新为 3.1.2 | 当前优先跟随 LEDE feed；升级到 3.x 要单独处理同名包和新增依赖 |
+| `luci-app-nikki` / `luci-i18n-nikki-zh-cn` | [nikkinikki-org/OpenWrt-nikki](https://github.com/nikkinikki-org/OpenWrt-nikki) | LEDE feed 版本：LuCI 1.26.2 | 推荐跟随 LEDE feed 的 `luci-app-nikki` 与 `packages` 的 `nikki/mihomo`；不要混用不同 feed 的旧 `.ipk` |
+| `mihomo` | [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | LEDE `packages`/`helloworld` feed 的 Go 构建版本 | 通过 LEDE feed 更新；它是 Nikki 的运行时依赖 |
+
+更新设备包时的建议流程：
+
+1. 在临时目录拉取 `orangeyoo/XR1710G-OpenWrt-iStoreOS-Community` 的 `source-2.0`，只比较 `package/luci-app-airoha-*` 和 `package/xr1710g-status-core`。
+2. 对照 `rchen14b`、`Gilly1970`、`naoki66` 的上游，优先吸收 bug fix，不直接把旧 ImmortalWrt 的二进制包搬进来。
+3. 更新后重新跑 CI，并至少验证 NPU/FlowSense 页面 RPC、风扇曲线写回、Argon 登录页、Nikki 启动和 `mihomo` 版本。
+4. 更新完成后把新的源提交写回本文件，保证 `packages/` 内容可追溯。
 
 ## 暂不加入
 

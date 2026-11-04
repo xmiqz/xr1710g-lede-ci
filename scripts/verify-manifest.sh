@@ -46,6 +46,10 @@ required=(
   luci-i18n-airoha-npu-zh-cn
   luci-i18n-airoha-flowsense-zh-cn
   luci-i18n-airoha-fancontrol-zh-cn
+  luci-app-nikki
+  luci-i18n-nikki-zh-cn
+  nikki
+  mihomo
   luci-theme-argon
   nand-utils
   rtl826x-firmware
