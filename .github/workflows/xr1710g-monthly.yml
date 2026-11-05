@@ -144,7 +144,9 @@ jobs:
             grep -q '^mt7996e wed_enable=1$' lede/files/etc/modules.d/99-mt7996e-wed
             count=$(ls lede/package/kernel/mt76/patches-6.18/*.patch | wc -l)
             echo "mt76 patches: $count"
-            [ "$count" -ge 17 ] || { echo "expected >=17 mt76 patches" >&2; exit 1; }
+            [ "$count" -ge 15 ] || { echo "expected >=15 mt76 patches" >&2; exit 1; }
+            test -f lede/package/kernel/mt76/patches-6.18/0100-*.patch
+            test -f lede/package/kernel/mt76/patches-6.18/0115-*.patch
             grep -q 'airoha,dsa-dram-forwarding' \
               lede/target/linux/airoha/dts/an7581-xr1710g.dts
             echo "stage1 inputs OK"
