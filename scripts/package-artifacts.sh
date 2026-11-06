@@ -29,6 +29,7 @@ fi
 mkdir -p "$dist_dir/packages"
 selected_packages=(
   xr1710g-status-core
+  xr1710g-npu-tuning
   luci-app-airoha-npu
   luci-app-airoha-flowsense
   luci-app-airoha-fancontrol
@@ -125,6 +126,14 @@ The upstream U-Boot readme warns not to flash u-boot.bin, u-boot.img, or
 xr1710g-ubi.img directly. Use the named chainloader slot image.
 EOF
 
+# Ship the offload verification tool at the top level too, so it can be
+# copied to a running router without unpacking the image.
+offload_check="$lede_dir/package/xr1710g/xr1710g-npu-tuning/files/usr/bin/xr1710g-offload-check"
+if [ -f "$offload_check" ]; then
+  cp -v "$offload_check" "$dist_dir/xr1710g-offload-check"
+  chmod 0755 "$dist_dir/xr1710g-offload-check"
+fi
+
 (
   cd "$dist_dir"
   find . -type f ! -name SHA256SUMS -print0 \
@@ -133,9 +142,13 @@ EOF
 )
 
 archive="$dist_dir/${release_tag}.zip"
+zip_members=(lede packages uboot BUILD_INFO.txt FLASH_README.txt SHA256SUMS)
+if [ -f "$dist_dir/xr1710g-offload-check" ]; then
+  zip_members+=(xr1710g-offload-check)
+fi
 (
   cd "$dist_dir"
-  zip -9 -r "$(basename "$archive")" lede packages uboot BUILD_INFO.txt FLASH_README.txt SHA256SUMS
+  zip -9 -r "$(basename "$archive")" "${zip_members[@]}"
 )
 (cd "$dist_dir" && sha256sum "$(basename "$archive")" >> SHA256SUMS)
 

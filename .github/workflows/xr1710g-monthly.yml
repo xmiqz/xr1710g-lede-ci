@@ -22,6 +22,11 @@ on:
         options:
           - default
           - trimmed
+      npu_wed:
+        description: "Enable MT7996 NPU/WED data path (stage 1, high risk)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -40,6 +45,7 @@ jobs:
       UBOOT_TAG: ${{ github.event.inputs.uboot_tag || 'xr1710g_261102' }}
       LEDE_REF: ${{ github.event.inputs.lede_ref || '98b3eed3ecb33da1be94d5084284b3644a864622' }}
       PROFILE: ${{ github.event.inputs.profile || 'default' }}
+      NPU_WED: ${{ github.event.inputs.npu_wed || 'false' }}
 
     steps:
       - name: Free disk space
@@ -80,6 +86,76 @@ jobs:
           mkdir -p lede/files
           cp -a ci/files/. lede/files/
           chmod 0755 lede/files/etc/uci-defaults/99-xr1710g-argon
+          chmod 0755 lede/files/etc/uci-defaults/92-xr1710g-npu-baseline
+
+      - name: Apply XR1710G NPU patches
+        run: |
+          set -euxo pipefail
+          # Stage 0: PPE accounting + any airoha patch LEDE's pinned tree lacks.
+          dst=lede/target/linux/airoha/patches-6.18
+          mkdir -p "$dst"
+          # LEDE's pinned airoha tree already carries the v7.1 PPE fixes under
+          # the same file names (content is equivalent; only the hunk offsets
+          # differ). Treat an existing same-named patch as authoritative and
+          # only copy the ones LEDE is missing.
+          for p in ci/patches/lede/airoha/*.patch; do
+            name=$(basename "$p")
+            if [ -e "$dst/$name" ]; then
+              echo "already in LEDE, skipping: $name"
+            else
+              cp -v "$p" "$dst"/
+            fi
+          done
+          # The target config-6.18 ships with NET_AIROHA_FLOW_STATS disabled as
+          # an explicit "is not set" line, so rewrite that line instead of
+          # appending a duplicate symbol.
+          cfg=lede/target/linux/airoha/an7581/config-6.18
+          if grep -q '^# CONFIG_NET_AIROHA_FLOW_STATS is not set$' "$cfg"; then
+            sed -i 's/^# CONFIG_NET_AIROHA_FLOW_STATS is not set$/CONFIG_NET_AIROHA_FLOW_STATS=y/' "$cfg"
+          elif ! grep -q '^CONFIG_NET_AIROHA_FLOW_STATS=y$' "$cfg"; then
+            echo 'CONFIG_NET_AIROHA_FLOW_STATS=y' >> "$cfg"
+          fi
+          if [ "$NPU_WED" = "true" ]; then
+            # Stage 1: mt76 NPU stack fixes, boot-time wed_enable, DSA/DRAM path.
+            mkdir -p lede/package/kernel/mt76/patches-6.18
+            cp -v ci/patches/mt76/patches-6.18/*.patch lede/package/kernel/mt76/patches-6.18/
+            # Use a separate 99- file instead of rewriting the kmod-generated
+            # /etc/modules.d/mt7996e: kmodloader sorts names, so 99- runs first
+            # and loads the module with wed_enable=1 before the plain entry.
+            # This is byte-for-byte the layout proven on the ImmortalWrt APs.
+            mkdir -p lede/files/etc/modules.d
+            cp -v ci/npu-wed/etc/modules.d/99-mt7996e-wed lede/files/etc/modules.d/99-mt7996e-wed
+            sed -i '/^&eth {/a\    airoha,dsa-dram-forwarding;' \
+              lede/target/linux/airoha/dts/an7581-xr1710g.dts
+            grep -q 'airoha,dsa-dram-forwarding' \
+              lede/target/linux/airoha/dts/an7581-xr1710g.dts
+          fi
+
+      - name: Verify XR1710G NPU build inputs
+        run: |
+          set -euxo pipefail
+          grep -q '^CONFIG_NET_AIROHA_FLOW_STATS=y$' \
+            lede/target/linux/airoha/an7581/config-6.18
+          test -f lede/target/linux/airoha/patches-6.18/144-*.patch
+          test -f lede/target/linux/airoha/patches-6.18/147-*.patch
+          echo "stage0 inputs OK"
+          if [ "$NPU_WED" = "true" ]; then
+            test -f lede/files/etc/modules.d/99-mt7996e-wed
+            grep -q '^mt7996e wed_enable=1$' lede/files/etc/modules.d/99-mt7996e-wed
+            count=$(ls lede/package/kernel/mt76/patches-6.18/*.patch | wc -l)
+            echo "mt76 patches: $count"
+            [ "$count" -ge 15 ] || { echo "expected >=15 mt76 patches" >&2; exit 1; }
+            test -f lede/package/kernel/mt76/patches-6.18/0100-*.patch
+            test -f lede/package/kernel/mt76/patches-6.18/0115-*.patch
+            grep -q 'airoha,dsa-dram-forwarding' \
+              lede/target/linux/airoha/dts/an7581-xr1710g.dts
+            # Stage 2: IRQ placement package and its verification tool.
+            test -f lede/package/xr1710g/xr1710g-npu-tuning/Makefile
+            test -f lede/package/xr1710g/xr1710g-npu-tuning/files/usr/bin/xr1710g-irq-balance
+            test -f lede/package/xr1710g/xr1710g-npu-tuning/files/usr/bin/xr1710g-offload-check
+            test -f lede/package/xr1710g/xr1710g-npu-tuning/files/etc/config/xr1710g_npu
+            echo "stage1 inputs OK"
+          fi
 
       - name: Download prebuilt Nikki runtime
         run: |
@@ -164,6 +240,8 @@ jobs:
             CONFIG_PACKAGE_luci-theme-argon \
             CONFIG_PACKAGE_nikki \
             CONFIG_PACKAGE_mihomo \
+            CONFIG_PACKAGE_airoha-en7581-mt7996-npu-firmware \
+            CONFIG_PACKAGE_xr1710g-npu-tuning \
             CONFIG_PACKAGE_yq
           do
             grep -q "^${symbol}=y$" .config || {
@@ -185,6 +263,19 @@ jobs:
         run: |
           set -o pipefail
           make -j"$(nproc)" 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
+
+      - name: Verify built kernel carries FLOW_STATS
+        working-directory: lede
+        run: |
+          set -euxo pipefail
+          # CONFIG_NET_AIROHA_FLOW_STATS is patched into the target config
+          # before the build; this proves it survived Kconfig and actually
+          # reached the kernel that produced the image.
+          set +o pipefail
+          kcfg="$(grep -rl '^CONFIG_NET_AIROHA_FLOW_STATS=y$' build_dir/target-*/linux-*/ 2>/dev/null | head -n 1)"
+          [ -n "$kcfg" ] || { echo "CONFIG_NET_AIROHA_FLOW_STATS missing from built kernel config" >&2; exit 1; }
+          echo "kernel config: $kcfg"
+          echo "FLOW_STATS OK"
 
       - name: Upload raw LEDE target output
         uses: actions/upload-artifact@v4

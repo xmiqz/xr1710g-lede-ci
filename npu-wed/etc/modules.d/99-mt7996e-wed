@@ -1,0 +1,11 @@
+# Enable Airoha NPU/WED for MT7996 on first cold boot.
+# OpenWrt kmodloader reads /etc/modules.d/<file> and passes trailing tokens
+# as module parameters. kmodloader sorts file names, so this 99- entry is
+# applied before the kmod-generated plain "mt7996e" entry, which then
+# becomes a no-op.
+#
+# This file name and content reproduce the layout that is proven to work on
+# the ImmortalWrt APs (/etc/modules.d/99-mt7996e-wed with mtime 2026-11-04).
+# Never reload at runtime: the NPU token rings and BA memory are not torn
+# down on module unload, so rmmod/insmod wed_enable=1 hangs wifi up.
+mt7996e wed_enable=1

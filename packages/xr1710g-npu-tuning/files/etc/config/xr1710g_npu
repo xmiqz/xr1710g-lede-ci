@@ -1,0 +1,17 @@
+config tuning 'main'
+	# Master switch. 0 leaves /proc/irq untouched.
+	option enabled '1'
+	# Spread every matched interrupt across CPUs instead of keeping them
+	# all on the CPU that first probed the device (CPU0).
+	option irq_spread '1'
+	# Keep CPU0 free for the Ethernet/PPE interrupts, start spreading at CPU1.
+	option reserve_cpu0 '1'
+	# Match list (extended regexp) for /proc/interrupts line names.
+	option irq_match 'mt76-npu|mt7996|mt76|airoha-npu'
+	# Optional software RPS. Off by default: once the NPU IRQs sit on
+	# different CPUs, RPS only adds IPIs and cross-core cache traffic.
+	# Set to 1 together with rps_cpus to steer Ethernet RX queues.
+	option rps '0'
+	option rps_cpus 'all'
+	# How long the boot helper waits for the mt76 module to register IRQs.
+	option irq_wait_seconds '120'

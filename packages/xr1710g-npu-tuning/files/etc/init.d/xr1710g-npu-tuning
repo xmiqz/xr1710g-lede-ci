@@ -1,0 +1,22 @@
+#!/bin/sh /etc/rc.common
+# Apply the XR1710G NPU/WED interrupt placement policy at boot.
+#
+# The mt76 module registers mt76-npu.0/.1 after the kernel boots, so boot()
+# waits (bounded by uci irq_wait_seconds) instead of racing the probe.
+
+START=99
+STOP=10
+
+boot() {
+	[ "$(uci -q get xr1710g_npu.main.enabled)" = "0" ] && return 0
+	/usr/bin/xr1710g-irq-balance apply --wait >/dev/null 2>&1 &
+}
+
+start() {
+	/usr/bin/xr1710g-irq-balance apply
+}
+
+stop() {
+	# Nothing to undo: the kernel keeps the last affinity until reboot.
+	:
+}

@@ -62,6 +62,7 @@ required=(
   uboot-envtools
   wpad-openssl
   xr1710g-status-core
+  xr1710g-npu-tuning
 )
 
 for pkg in "${required[@]}"; do
