@@ -1,0 +1,7 @@
+#!/bin/sh
+# First-boot default: enable the interrupt placement service so later boots
+# apply the uci policy without user action.
+
+[ -f /etc/config/xr1710g_npu ] || exit 0
+/etc/init.d/xr1710g-npu-tuning enable >/dev/null 2>&1 || true
+exit 0

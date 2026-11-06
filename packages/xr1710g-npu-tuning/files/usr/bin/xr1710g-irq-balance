@@ -1,0 +1,148 @@
+#!/bin/sh
+# XR1710G NPU/WED interrupt placement helper.
+#
+# Goal: stop forcing every mt76-npu/mt7996 interrupt onto CPU0.  On this
+# box the Ethernet/PPE interrupts already own CPU0, so the wireless data
+# path is the only thing that can be spread.  Placement is done through
+# /proc/irq/<n>/smp_affinity_list, which is safe at runtime and reversible
+# (no module reload, no driver re-probe).
+#
+# Usage:
+#   xr1710g-irq-balance apply [--wait]   apply the policy (default at boot)
+#   xr1710g-irq-balance show             print matched IRQ lines + affinity
+#   xr1710g-irq-balance status           one-line machine-readable summary
+
+CONF=/etc/config/xr1710g_npu
+TAG=xr1710g-irq
+
+log() {
+	command -v logger >/dev/null 2>&1 && logger -t "$TAG" "$*"
+	[ -t 1 ] && echo "$*"
+}
+
+cfg() {
+	uci -q get "xr1710g_npu.main.$1" 2>/dev/null
+}
+
+ncpu() {
+	if command -v nproc >/dev/null 2>&1; then
+		nproc
+	else
+		awk '/^cpu[0-9]+ /{n++} END{print n?n:1}' /proc/stat
+	fi
+}
+
+irq_match() {
+	cfg irq_match || echo 'mt76-npu|mt7996|mt76|airoha-npu'
+}
+
+collect_irqs() {
+	awk -v pat="$(irq_match)" \
+		'/^ *[0-9]+:/ && $0 ~ pat { i=$1; sub(":", "", i); print i }' \
+		/proc/interrupts
+}
+
+show_irqs() {
+	awk -v pat="$(irq_match)" '/^ *[0-9]+:/ && $0 ~ pat' /proc/interrupts
+}
+
+apply_affinity() {
+	n=$1
+	start=$2
+	idx=$start
+	count=0
+	fail=0
+	for irq in $(collect_irqs); do
+		if [ -w "/proc/irq/$irq/smp_affinity_list" ]; then
+			if echo "$idx" > "/proc/irq/$irq/smp_affinity_list" 2>/dev/null; then
+				log "irq $irq -> cpu$idx ($(cat /proc/irq/$irq/smp_affinity_list 2>/dev/null))"
+				count=$((count + 1))
+			else
+				log "irq $irq: affinity write rejected (driver pinned)"
+				fail=$((fail + 1))
+			fi
+			idx=$((idx + 1))
+			[ "$idx" -ge "$n" ] && idx=$start
+		else
+			log "irq $irq: smp_affinity_list not writable"
+			fail=$((fail + 1))
+		fi
+	done
+	echo "applied=$count failed=$fail cpus=$n start_cpu=$start"
+	[ "$count" -gt 0 ] || return 2
+	return 0
+}
+
+apply_rps() {
+	mode=$1
+	n=$2
+	case "$mode" in
+	all) mask=$(awk -v n="$n" 'BEGIN { printf "%x", (n >= 32) ? 4294967295 : (2 ^ n) - 1 }') ;;
+	*) mask=$mode ;;
+	esac
+	found=0
+	for q in /sys/class/net/*/queues/rx-*/rps_cpus; do
+		[ -w "$q" ] || continue
+		echo "$mask" > "$q" 2>/dev/null && found=$((found + 1))
+	done
+	log "rps_cpus=$mask queues=$found"
+}
+
+wait_for_irqs() {
+	limit=$1
+	elapsed=0
+	while [ "$elapsed" -lt "$limit" ]; do
+		[ -n "$(collect_irqs)" ] && return 0
+		sleep 5
+		elapsed=$((elapsed + 5))
+	done
+	return 1
+}
+
+do_apply() {
+	wait_flag=$1
+	[ "$(cfg enabled || echo 1)" = "1" ] || { log "disabled by uci"; return 0; }
+
+	n=$(ncpu)
+	start=0
+	[ "$(cfg reserve_cpu0 || echo 1)" = "1" ] && [ "$n" -gt 1 ] && start=1
+
+	if [ "$wait_flag" = "--wait" ]; then
+		limit=$(cfg irq_wait_seconds || echo 120)
+		wait_for_irqs "$limit" || log "no mt76/npu irq after ${limit}s"
+	fi
+
+	irqs=$(collect_irqs)
+	if [ -z "$irqs" ]; then
+		log "no matching irq in /proc/interrupts"
+		return 2
+	fi
+
+	if [ "$(cfg irq_spread || echo 1)" = "1" ]; then
+		apply_affinity "$n" "$start"
+		rc=$?
+	else
+		log "irq_spread=0, leaving affinities untouched"
+		rc=0
+	fi
+
+	[ "$(cfg rps || echo 0)" = "1" ] && apply_rps "$(cfg rps_cpus || echo all)" "$n"
+
+	return $rc
+}
+
+do_status() {
+	irqs=$(collect_irqs | tr '\n' ' ')
+	n=$(ncpu)
+	echo "cpus=$n irqs=${irqs:-none} enabled=$(cfg enabled || echo 1) spread=$(cfg irq_spread || echo 1) rps=$(cfg rps || echo 0)"
+}
+
+case "$1" in
+	apply) do_apply "${2:-}" ;;
+	show) show_irqs ;;
+	status) do_status ;;
+	*)
+		echo "usage: $0 {apply [--wait]|show|status}" >&2
+		exit 1
+		;;
+esac

@@ -149,6 +149,11 @@ jobs:
             test -f lede/package/kernel/mt76/patches-6.18/0115-*.patch
             grep -q 'airoha,dsa-dram-forwarding' \
               lede/target/linux/airoha/dts/an7581-xr1710g.dts
+            # Stage 2: IRQ placement package and its verification tool.
+            test -f lede/package/xr1710g/xr1710g-npu-tuning/Makefile
+            test -f lede/package/xr1710g/xr1710g-npu-tuning/files/usr/bin/xr1710g-irq-balance
+            test -f lede/package/xr1710g/xr1710g-npu-tuning/files/usr/bin/xr1710g-offload-check
+            test -f lede/package/xr1710g/xr1710g-npu-tuning/files/etc/config/xr1710g_npu
             echo "stage1 inputs OK"
           fi
 
@@ -236,6 +241,7 @@ jobs:
             CONFIG_PACKAGE_nikki \
             CONFIG_PACKAGE_mihomo \
             CONFIG_PACKAGE_airoha-en7581-mt7996-npu-firmware \
+            CONFIG_PACKAGE_xr1710g-npu-tuning \
             CONFIG_PACKAGE_yq
           do
             grep -q "^${symbol}=y$" .config || {
@@ -257,6 +263,19 @@ jobs:
         run: |
           set -o pipefail
           make -j"$(nproc)" 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
+
+      - name: Verify built kernel carries FLOW_STATS
+        working-directory: lede
+        run: |
+          set -euxo pipefail
+          # CONFIG_NET_AIROHA_FLOW_STATS is patched into the target config
+          # before the build; this proves it survived Kconfig and actually
+          # reached the kernel that produced the image.
+          set +o pipefail
+          kcfg="$(grep -rl '^CONFIG_NET_AIROHA_FLOW_STATS=y$' build_dir/target-*/linux-*/ 2>/dev/null | head -n 1)"
+          [ -n "$kcfg" ] || { echo "CONFIG_NET_AIROHA_FLOW_STATS missing from built kernel config" >&2; exit 1; }
+          echo "kernel config: $kcfg"
+          echo "FLOW_STATS OK"
 
       - name: Upload raw LEDE target output
         uses: actions/upload-artifact@v4

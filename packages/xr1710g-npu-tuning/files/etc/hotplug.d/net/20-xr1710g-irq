@@ -1,0 +1,11 @@
+#!/bin/sh
+# Re-apply the interrupt placement whenever a net device shows up.  On this
+# target the mt76 module can be loaded after the boot-time helper already
+# timed out, so this catches late IRQ registration.  Idempotent and cheap:
+# it exits immediately when no mt76/npu IRQ exists yet.
+
+[ "$ACTION" = "add" ] || exit 0
+[ -x /usr/bin/xr1710g-irq-balance ] || exit 0
+[ -f /etc/config/xr1710g_npu ] || exit 0
+
+/usr/bin/xr1710g-irq-balance apply >/dev/null 2>&1

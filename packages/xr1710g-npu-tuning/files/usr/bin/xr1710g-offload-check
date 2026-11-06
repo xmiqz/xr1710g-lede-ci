@@ -1,0 +1,208 @@
+#!/bin/sh
+# xr1710g-offload-check - prove (or disprove) that the Wi-Fi data path is
+# really taken over by the Airoha NPU instead of the host CPU.
+#
+# It snapshots, waits, snapshots again and prints the deltas of:
+#   * mt76 token_info (token pool + npu_rx ring heads)      <- NPU data path
+#   * /proc/interrupts (mt76-npu / mt7996 lines, per CPU)   <- who gets the IRQ
+#   * /proc/stat (per-core busy / sys / softirq)            <- who burns the CPU
+#   * /proc/net/snmp + netstat (retransmits, forwards)      <- correctness
+#   * station rx/tx bytes                                    <- is there traffic
+#
+# Usage:
+#   xr1710g-offload-check [-s SECONDS] [-o OUTDIR] [--load IPERF3_SERVER]
+#
+# --load starts `iperf3 -c SERVER -t SECONDS -P 4` in the background so the
+# window actually carries Wi-Fi traffic.  Without traffic the token counters
+# stay at zero and the verdict is "not measurable", not "offload broken".
+
+SECS=15
+OUTDIR=/tmp/xr1710g-offload
+LOAD_SERVER=
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-s) SECS=$2; shift 2 ;;
+	-o) OUTDIR=$2; shift 2 ;;
+	--load) LOAD_SERVER=$2; shift 2 ;;
+	-h|--help)
+		echo "usage: $0 [-s SECONDS] [-o OUTDIR] [--load IPERF3_SERVER]"
+		exit 0
+		;;
+	*) echo "unknown argument: $1" >&2; exit 1 ;;
+	esac
+done
+
+T0="$OUTDIR/t0"
+T1="$OUTDIR/t1"
+rm -rf "$OUTDIR"
+mkdir -p "$T0" "$T1" || exit 1
+
+SNAP_TOKEN=''
+for f in /sys/kernel/debug/ieee80211/phy*/mt76/token_info; do
+	[ -r "$f" ] && SNAP_TOKEN="$SNAP_TOKEN $f"
+done
+
+pair() {
+	# join two snapshots line by line with '|' (avoids depending on paste)
+	awk 'NR==FNR { a[FNR] = $0; next } { print a[FNR] "|" $0 }' "$1" "$2"
+}
+
+snapshot() {
+	dir=$1
+	: > "$dir/token"
+	for f in $SNAP_TOKEN; do
+		phy=$(echo "$f" | sed 's#.*/ieee80211/\(phy[0-9]*\)/.*#\1#')
+		awk -v phy="$phy" '
+			{ key = $1; sub(":", "", key) }
+			key == "token_count"     { print phy, "token_count", $2, "" }
+			key == "wed_token_count" { print phy, "wed_token_count", $2, "" }
+			$1 ~ /npu_rx/            { print phy, $1, $7, $3 }
+		' "$f" >> "$dir/token"
+	done
+
+	awk '/^ *[0-9]+:/ && /mt76-npu|mt7996|mt76|airoha-npu/' /proc/interrupts \
+		> "$dir/irq"
+	awk '/^cpu/{print}' /proc/stat > "$dir/stat"
+	awk '
+		/^[A-Za-z]+:/ {
+			proto = $1; sub(":", "", proto)
+			if ($2 ~ /^[0-9]+$/) {
+				for (i = 2; i <= NF; i++) print proto, hdr[i], $i
+			} else {
+				for (i = 2; i <= NF; i++) hdr[i] = $i
+			}
+		}' /proc/net/snmp /proc/net/netstat > "$dir/net"
+
+	: > "$dir/station"
+	if command -v iw >/dev/null 2>&1; then
+		for i in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do
+			iw dev "$i" station dump 2>/dev/null |
+				awk -v i="$i" '/Station/{s=$2}
+					/^[ \t]*(rx|tx) bytes:/{print i, s, $1, $3}' >> "$dir/station"
+		done
+	fi
+}
+
+if [ -n "$LOAD_SERVER" ] && command -v iperf3 >/dev/null 2>&1; then
+	iperf3 -c "$LOAD_SERVER" -t "$SECS" -P 4 >"$OUTDIR/iperf3.log" 2>&1 &
+	LOAD_PID=$!
+fi
+
+snapshot "$T0"
+sleep "$SECS"
+snapshot "$T1"
+[ -n "${LOAD_PID:-}" ] && wait "$LOAD_PID" 2>/dev/null
+
+NCPU=$(nproc 2>/dev/null || awk '/^cpu[0-9]+/{n++} END{print n?n:1}' /proc/stat)
+
+echo "== xr1710g-offload-check (${SECS}s, ${NCPU} cpus) =="
+
+echo
+echo "[1] NPU token / ring deltas"
+pair "$T0/token" "$T1/token" 2>/dev/null |
+awk -F'|' '
+{
+	split($1, a, " "); split($2, b, " ");
+	v0 = a[3] + 0; v1 = b[3] + 0; nd = a[4] + 0;
+	d = (nd > 0) ? (v1 - v0 + nd) % nd : v1 - v0;
+	label = (a[2] ~ /npu_rx/) ? a[2] " head" : a[2];
+	printf "  %s %-16s %6d -> %6d  (%+d)\n", a[1], label, v0, v1, d;
+	toksum[a[2]] += d;
+}
+END {
+	printf "  total token_count %+d  wed_token_count %+d\n", \
+		toksum["token_count"], toksum["wed_token_count"];
+}'
+
+echo
+echo "[2] mt76-npu / mt7996 interrupt deltas (per CPU)"
+pair "$T0/irq" "$T1/irq" 2>/dev/null |
+awk -F'|' -v ncpu="$NCPU" '
+{
+	n = split($2, b, " ");
+	name = (n > 0) ? b[n] : "?";
+	for (c = 0; c < ncpu; c++) {
+		split($1, a, " ");
+		d[c] += (b[c + 2] + 0) - (a[c + 2] + 0);
+		tot += (b[c + 2] + 0) - (a[c + 2] + 0);
+	}
+	printf "  %-16s total %+d", name, tot;
+	for (c = 0; c < ncpu; c++) printf "  cpu%d %+d", c, d[c];
+	printf "\n";
+	tot = 0;
+	for (c = 0; c < ncpu; c++) d[c] = 0;
+}'
+
+echo
+echo "[3] per-core CPU delta (busy = user+sys+irq+softirq)"
+pair "$T0/stat" "$T1/stat" 2>/dev/null |
+awk -F'|' '
+{
+	split($1, a, " "); split($2, b, " ");
+	u = b[2] - a[2]; s = b[3] - a[3]; id = b[4] - a[4];
+	io = b[5] - a[5]; ir = b[6] - a[6]; si = b[7] - a[7];
+	tot = u + s + id + io + ir + si;
+	if (tot <= 0) next;
+	busy = tot - id - io;
+	pct = 100 * busy / tot;
+	printf "  %-5s busy %5.1f%%  sys %5.1f%%  softirq %5.1f%%\n",
+		a[1], pct, 100 * s / tot, 100 * si / tot;
+}'
+
+echo
+echo "[4] nstat deltas"
+pair "$T0/net" "$T1/net" 2>/dev/null |
+awk -F'|' '
+{
+	split($1, a, " "); split($2, b, " ");
+	if (a[2] == "TcpRetransSegs" || a[2] == "TcpOutSegs" ||
+	    a[2] == "IpInReceives" || a[2] == "IpForwDatagrams" || a[2] == "IpInDelivers")
+		printf "  %-18s %+d\n", a[1] "." a[2], (b[3] + 0) - (a[3] + 0);
+}'
+
+echo
+echo "[5] station traffic delta"
+pair "$T0/station" "$T1/station" 2>/dev/null |
+awk -F'|' '
+{
+	split($1, a, " "); split($2, b, " ");
+	d = (b[4] + 0) - (a[4] + 0);
+	printf "  %-10s %-18s %-3s %+d\n", a[1], a[2], a[3], d;
+	if (a[3] == "tx") tx += d; else rx += d;
+}
+END { printf "  station bytes: rx %+d  tx %+d\n", rx, tx }'
+
+echo
+echo "[6] verdict"
+M=$(
+pair "$T0/token" "$T1/token" 2>/dev/null |
+awk -F'|' '
+{
+	split($1, a, " "); split($2, b, " ");
+	v0 = a[3] + 0; v1 = b[3] + 0; nd = a[4] + 0;
+	d = (nd > 0) ? (v1 - v0 + nd) % nd : v1 - v0;
+	if (a[2] == "token_count") tok += d;
+	if (a[2] == "wed_token_count") wtok += d;
+	if (a[2] ~ /npu_rx/) ring += d;
+}
+END { printf "%d %d %d", tok, wtok, ring }'
+)
+set -- $M
+TOK=$1
+WTOK=$2
+RING=$3
+ST=$(
+pair "$T0/station" "$T1/station" 2>/dev/null |
+awk -F'|' '{split($1,a," ");split($2,b," ");t+=(b[4]+0)-(a[4]+0)} END{print t+0}'
+)
+echo "  tokens=$TOK wed_tokens=$WTOK npu_rx_head=$RING station_bytes=$ST"
+if [ "$ST" -lt 1048576 ]; then
+	echo "  RESULT: 不可判定 - Wi-Fi 侧流量不足 1 MB（用 --load 或让客户端跑大文件）"
+elif [ "$TOK" -eq 0 ]; then
+	echo "  RESULT: 未接管 - 有流量但 NPU token 池未被消耗，mt76 仍走 host path"
+else
+	echo "  RESULT: 已接管 - 有流量且 NPU token 池在消耗"
+fi
+echo
+echo "raw snapshots: $T0 $T1"
