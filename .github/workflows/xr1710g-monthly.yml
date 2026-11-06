@@ -88,6 +88,27 @@ jobs:
           chmod 0755 lede/files/etc/uci-defaults/99-xr1710g-argon
           chmod 0755 lede/files/etc/uci-defaults/92-xr1710g-npu-baseline
 
+      - name: Verify vendored wifi-scripts and regulatory.db
+        run: |
+          set -euo pipefail
+          # MLO needs the ucode wifi-scripts: netifd prefers /lib/netifd/wireless.uc
+          # over the legacy mac80211.sh and ap.uc emits hostapd's mld_ap/mld_link_id.
+          for f in \
+            files/lib/netifd/wireless.uc \
+            files/lib/netifd/wireless-device.uc \
+            files/lib/netifd/main.uc \
+            files/lib/netifd/utils.uc \
+            files/usr/share/ucode/wifi/ap.uc \
+            files/usr/share/ucode/wifi/hostapd.uc \
+            files/lib/firmware/regulatory.db
+          do
+            [ -s "ci/$f" ] || { echo "missing overlay file: $f" >&2; exit 1; }
+          done
+          echo "ab50b59a76a411375bbcc573a5fb6df88b8027d7076f73053c78e4203f412bc3  ci/files/lib/firmware/regulatory.db" \
+            | sha256sum -c -
+          grep -q 'mld_ap=1' ci/files/usr/share/ucode/wifi/ap.uc
+          grep -q 'mld_link_id' ci/files/usr/share/ucode/wifi/ap.uc
+
       - name: Apply XR1710G NPU patches
         run: |
           set -euxo pipefail
@@ -242,6 +263,10 @@ jobs:
             CONFIG_PACKAGE_mihomo \
             CONFIG_PACKAGE_airoha-en7581-mt7996-npu-firmware \
             CONFIG_PACKAGE_xr1710g-npu-tuning \
+            CONFIG_PACKAGE_ethtool-full \
+            CONFIG_PACKAGE_iperf3 \
+            CONFIG_PACKAGE_wpad-mesh-openssl \
+            CONFIG_PACKAGE_ucode-mod-nl80211 \
             CONFIG_PACKAGE_yq
           do
             grep -q "^${symbol}=y$" .config || {
@@ -249,6 +274,10 @@ jobs:
               exit 1
             }
           done
+          if grep -q '^CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y$' .config; then
+            echo "signed-only regdb selected; bundled regulatory.db would be ignored" >&2
+            exit 1
+          fi
           if [ "$make_defconfig_rc" -ne 0 ]; then
             echo "make defconfig returned $make_defconfig_rc" >&2
             exit "$make_defconfig_rc"
@@ -276,6 +305,24 @@ jobs:
           [ -n "$kcfg" ] || { echo "CONFIG_NET_AIROHA_FLOW_STATS missing from built kernel config" >&2; exit 1; }
           echo "kernel config: $kcfg"
           echo "FLOW_STATS OK"
+
+      - name: Verify MLO overlay landed in rootfs
+        working-directory: lede
+        run: |
+          set -euxo pipefail
+          rootfs="$(ls -d build_dir/target-*/root-* 2>/dev/null | head -n 1)"
+          [ -n "$rootfs" ] || { echo "assembled rootfs not found" >&2; exit 1; }
+          for f in \
+            lib/netifd/wireless.uc \
+            lib/netifd/wireless-device.uc \
+            usr/share/ucode/wifi/ap.uc \
+            lib/firmware/regulatory.db
+          do
+            [ -s "$rootfs/$f" ] || { echo "missing in rootfs: $f" >&2; exit 1; }
+          done
+          echo "ab50b59a76a411375bbcc573a5fb6df88b8027d7076f73053c78e4203f412bc3  $rootfs/lib/firmware/regulatory.db" \
+            | sha256sum -c -
+          echo "MLO overlay OK"
 
       - name: Upload raw LEDE target output
         uses: actions/upload-artifact@v4
