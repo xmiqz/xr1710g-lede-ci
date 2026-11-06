@@ -91,23 +91,39 @@ jobs:
       - name: Verify vendored wifi-scripts and regulatory.db
         run: |
           set -euo pipefail
-          # MLO needs the ucode wifi-scripts: netifd prefers /lib/netifd/wireless.uc
-          # over the legacy mac80211.sh and ap.uc emits hostapd's mld_ap/mld_link_id.
+          # MLO needs three pieces that LEDE's pinned tree does not have:
+          #   netifd's ucode wireless framework (main.uc + wireless.uc),
+          #   wifi-scripts (ap.uc emits hostapd's mld_ap/mld_link_id),
+          #   the hostapd release that implements MLD (2026-08-07).
           for f in \
-            files/lib/netifd/wireless.uc \
-            files/lib/netifd/wireless-device.uc \
-            files/lib/netifd/main.uc \
-            files/lib/netifd/utils.uc \
-            files/usr/share/ucode/wifi/ap.uc \
-            files/usr/share/ucode/wifi/hostapd.uc \
+            packages/wifi-scripts/files/lib/netifd/wireless.uc \
+            packages/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc \
+            packages/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc \
+            overrides/netifd/files/lib/netifd/main.uc \
+            overrides/hostapd/Makefile \
             files/lib/firmware/regulatory.db
           do
-            [ -s "ci/$f" ] || { echo "missing overlay file: $f" >&2; exit 1; }
+            [ -s "ci/$f" ] || { echo "missing build input: $f" >&2; exit 1; }
           done
           echo "ab50b59a76a411375bbcc573a5fb6df88b8027d7076f73053c78e4203f412bc3  ci/files/lib/firmware/regulatory.db" \
             | sha256sum -c -
-          grep -q 'mld_ap=1' ci/files/usr/share/ucode/wifi/ap.uc
-          grep -q 'mld_link_id' ci/files/usr/share/ucode/wifi/ap.uc
+          grep -q 'mld_ap=1' ci/packages/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
+          grep -q 'mld_link_id' ci/packages/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
+          grep -q 'PKG_SOURCE_VERSION:=831364bf02710ad09c2f27d3efa92abeeb5634c0' ci/overrides/hostapd/Makefile
+
+      - name: Replace LEDE netifd and hostapd with pinned upstream packages
+        run: |
+          set -euxo pipefail
+          # LEDE pins netifd 2025-05-23 (no ucode wireless framework at all)
+          # and hostapd 2024-09-15 (no 802.11be MLD). The drops are the exact
+          # upstream package dirs, so their own patch series stay paired with
+          # the source version.
+          rm -rf lede/package/network/config/netifd lede/package/network/services/hostapd
+          cp -a ci/overrides/netifd lede/package/network/config/netifd
+          cp -a ci/overrides/hostapd lede/package/network/services/hostapd
+          test -f lede/package/network/config/netifd/files/lib/netifd/main.uc
+          test -f lede/package/network/services/hostapd/patches/600-ubus_support.patch
+          grep -q 'PKG_SOURCE_DATE:=2026-08-07' lede/package/network/services/hostapd/Makefile
 
       - name: Apply XR1710G NPU patches
         run: |
@@ -265,7 +281,10 @@ jobs:
             CONFIG_PACKAGE_xr1710g-npu-tuning \
             CONFIG_PACKAGE_ethtool-full \
             CONFIG_PACKAGE_iperf3 \
-            CONFIG_PACKAGE_wpad-openssl \
+            CONFIG_PACKAGE_wpad-mesh-openssl \
+            CONFIG_PACKAGE_wifi-scripts \
+            CONFIG_WIFI_SCRIPTS_UCODE \
+            CONFIG_DRIVER_11BE_SUPPORT \
             CONFIG_PACKAGE_ucode-mod-nl80211 \
             CONFIG_PACKAGE_yq
           do
