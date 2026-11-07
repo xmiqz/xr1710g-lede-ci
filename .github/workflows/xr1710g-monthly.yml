@@ -257,6 +257,18 @@ jobs:
           make_defconfig_rc=$?
           set -e
           echo "make_defconfig_rc=$make_defconfig_rc"
+          echo "input config carries usteer=$(grep -c '^CONFIG_PACKAGE_usteer=y$' ../ci/configs/xr1710g.config)"
+          # usteer keeps getting reset to 'not set' by defconfig even though its
+          # generated Kconfig block has no 'depends on' at all (run 42350276502).
+          # /etc/config/usteer survives a keep-config flash but the daemon would
+          # not, so force the symbol back and assert it before compiling.
+          if ! grep -q '^CONFIG_PACKAGE_usteer=y$' .config; then
+            echo "usteer dropped by defconfig; forcing CONFIG_PACKAGE_usteer=y" >&2
+            sed -i '/^# CONFIG_PACKAGE_usteer is not set$/d' .config
+            echo 'CONFIG_PACKAGE_usteer=y' >> .config
+          fi
+          grep -q '^CONFIG_PACKAGE_usteer=y$' .config || {
+            echo "could not force CONFIG_PACKAGE_usteer=y" >&2; exit 1; }
           grep -E '^CONFIG_(aarch64|ARCH_64BIT)|CONFIG_PACKAGE_(firewall4|ip-full|curl|ca-bundle|yq|nikki|mihomo|luci-app-nikki)' .config || true
           if [ -f tmp/.config-package.in ]; then
             echo "--- yq package Kconfig ---"
