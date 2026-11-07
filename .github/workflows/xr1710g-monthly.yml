@@ -282,6 +282,7 @@ jobs:
             CONFIG_PACKAGE_ethtool-full \
             CONFIG_PACKAGE_wpad-mesh-openssl \
             CONFIG_PACKAGE_usteer \
+            CONFIG_PACKAGE_libpcap \
             CONFIG_PACKAGE_wifi-scripts \
             CONFIG_WIFI_SCRIPTS_UCODE \
             CONFIG_DRIVER_11BE_SUPPORT \
@@ -297,7 +298,11 @@ jobs:
             # Report every dropped symbol in one run: each CI attempt costs
             # hours, so a serial first-failure exit is too expensive.
             echo "Missing requested config symbols:${missing}" >&2
-            grep -E '^# CONFIG_PACKAGE_(iperf3|wpad|wifi-scripts|ucode-mod-nl80211)' .config || true
+            grep -E '^# CONFIG_PACKAGE_(iperf3|wpad|wifi-scripts|ucode-mod-nl80211|usteer|libpcap)' .config || true
+            if [ -f tmp/.config-package.in ]; then
+              echo "--- usteer package Kconfig ---"
+              grep -n -A24 'config PACKAGE_usteer' tmp/.config-package.in || true
+            fi
             exit 1
           fi
           if grep -q '^CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y$' .config; then
