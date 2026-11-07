@@ -281,6 +281,7 @@ jobs:
             CONFIG_PACKAGE_xr1710g-npu-tuning \
             CONFIG_PACKAGE_ethtool-full \
             CONFIG_PACKAGE_wpad-mesh-openssl \
+            CONFIG_PACKAGE_usteer \
             CONFIG_PACKAGE_wifi-scripts \
             CONFIG_WIFI_SCRIPTS_UCODE \
             CONFIG_DRIVER_11BE_SUPPORT \
