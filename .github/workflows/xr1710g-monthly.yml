@@ -280,19 +280,25 @@ jobs:
             CONFIG_PACKAGE_airoha-en7581-mt7996-npu-firmware \
             CONFIG_PACKAGE_xr1710g-npu-tuning \
             CONFIG_PACKAGE_ethtool-full \
-            CONFIG_PACKAGE_iperf3 \
             CONFIG_PACKAGE_wpad-mesh-openssl \
             CONFIG_PACKAGE_wifi-scripts \
             CONFIG_WIFI_SCRIPTS_UCODE \
             CONFIG_DRIVER_11BE_SUPPORT \
             CONFIG_PACKAGE_ucode-mod-nl80211 \
-            CONFIG_PACKAGE_yq
+            CONFIG_PACKAGE_yq \
+            CONFIG_PACKAGE_xr1710g-iperf3
           do
-            grep -q "^${symbol}=y$" .config || {
-              echo "Missing requested config symbol: ${symbol}" >&2
-              exit 1
-            }
+            if ! grep -q "^${symbol}=y$" .config; then
+              missing="${missing} ${symbol}"
+            fi
           done
+          if [ -n "${missing}" ]; then
+            # Report every dropped symbol in one run: each CI attempt costs
+            # hours, so a serial first-failure exit is too expensive.
+            echo "Missing requested config symbols:${missing}" >&2
+            grep -E '^# CONFIG_PACKAGE_(iperf3|wpad|wifi-scripts|ucode-mod-nl80211)' .config || true
+            exit 1
+          fi
           if grep -q '^CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y$' .config; then
             echo "signed-only regdb selected; bundled regulatory.db would be ignored" >&2
             exit 1
