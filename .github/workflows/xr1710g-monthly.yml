@@ -262,7 +262,7 @@ jobs:
           # generated Kconfig blocks carry no 'depends on' (runs 42287176720 and
           # 42350276502). usteer is useless without the daemon and every matrix
           # row needs iperf3, so force both back and assert before compiling.
-          for pkg in usteer iperf3; do
+          for pkg in usteer iperf3 libatomic; do
             if ! grep -q "^CONFIG_PACKAGE_${pkg}=y$" .config; then
               echo "${pkg} dropped by defconfig; forcing it back" >&2
               sed -i "/^# CONFIG_PACKAGE_${pkg} is not set$/d" .config
@@ -302,7 +302,8 @@ jobs:
             CONFIG_DRIVER_11BE_SUPPORT \
             CONFIG_PACKAGE_ucode-mod-nl80211 \
             CONFIG_PACKAGE_yq \
-            CONFIG_PACKAGE_iperf3
+            CONFIG_PACKAGE_iperf3 \
+            CONFIG_PACKAGE_libatomic
           do
             if ! grep -q "^${symbol}=y$" .config; then
               missing="${missing} ${symbol}"
