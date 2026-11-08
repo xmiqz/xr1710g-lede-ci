@@ -257,18 +257,20 @@ jobs:
           make_defconfig_rc=$?
           set -e
           echo "make_defconfig_rc=$make_defconfig_rc"
-          echo "input config carries usteer=$(grep -c '^CONFIG_PACKAGE_usteer=y$' ../ci/configs/xr1710g.config)"
-          # usteer keeps getting reset to 'not set' by defconfig even though its
-          # generated Kconfig block has no 'depends on' at all (run 42350276502).
-          # /etc/config/usteer survives a keep-config flash but the daemon would
-          # not, so force the symbol back and assert it before compiling.
-          if ! grep -q '^CONFIG_PACKAGE_usteer=y$' .config; then
-            echo "usteer dropped by defconfig; forcing CONFIG_PACKAGE_usteer=y" >&2
-            sed -i '/^# CONFIG_PACKAGE_usteer is not set$/d' .config
-            echo 'CONFIG_PACKAGE_usteer=y' >> .config
-          fi
-          grep -q '^CONFIG_PACKAGE_usteer=y$' .config || {
-            echo "could not force CONFIG_PACKAGE_usteer=y" >&2; exit 1; }
+          echo "input config carries usteer=$(grep -c '^CONFIG_PACKAGE_usteer=y$' ../ci/configs/xr1710g.config) iperf3=$(grep -c '^CONFIG_PACKAGE_iperf3=y$' ../ci/configs/xr1710g.config)"
+          # defconfig resets these feed packages to 'not set' even though their
+          # generated Kconfig blocks carry no 'depends on' (runs 42287176720 and
+          # 42350276502). usteer is useless without the daemon and every matrix
+          # row needs iperf3, so force both back and assert before compiling.
+          for pkg in usteer iperf3; do
+            if ! grep -q "^CONFIG_PACKAGE_${pkg}=y$" .config; then
+              echo "${pkg} dropped by defconfig; forcing it back" >&2
+              sed -i "/^# CONFIG_PACKAGE_${pkg} is not set$/d" .config
+              echo "CONFIG_PACKAGE_${pkg}=y" >> .config
+            fi
+            grep -q "^CONFIG_PACKAGE_${pkg}=y$" .config || {
+              echo "could not force CONFIG_PACKAGE_${pkg}=y" >&2; exit 1; }
+          done
           grep -E '^CONFIG_(aarch64|ARCH_64BIT)|CONFIG_PACKAGE_(firewall4|ip-full|curl|ca-bundle|yq|nikki|mihomo|luci-app-nikki)' .config || true
           if [ -f tmp/.config-package.in ]; then
             echo "--- yq package Kconfig ---"
@@ -300,7 +302,7 @@ jobs:
             CONFIG_DRIVER_11BE_SUPPORT \
             CONFIG_PACKAGE_ucode-mod-nl80211 \
             CONFIG_PACKAGE_yq \
-            CONFIG_PACKAGE_xr1710g-iperf3
+            CONFIG_PACKAGE_iperf3
           do
             if ! grep -q "^${symbol}=y$" .config; then
               missing="${missing} ${symbol}"
