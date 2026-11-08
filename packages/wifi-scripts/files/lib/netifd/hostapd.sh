@@ -894,6 +894,7 @@ hostapd_set_bss_options() {
 	[ "$bss_transition" -eq "1" ] && append bss_conf "bss_transition=1" "$N"
 	[ "$mbo" -eq 1 ] && append bss_conf "mbo=1" "$N"
 
+	config_add_boolean rnr
 	json_get_vars ieee80211k rrm_neighbor_report rrm_beacon_report rnr
 	set_default ieee80211k 0
 	set_default rnr 0
